@@ -7,6 +7,7 @@ import imageio
 import math as Math 
 import json
 
+
 isLinux=True
 def getDistanceMeters(lat1, lon1, lat2, lon2):
     dLat = lat2-lat1
@@ -69,6 +70,7 @@ class way:
     def toString(self):
         return "id: " + self.id + " nodes: " + self.nodes.__str__()
 
+nodes = {}
 
 if os.path.isfile("pureData.json"):
     file = open("pureData.json", "r")
@@ -85,80 +87,90 @@ if os.path.isfile("pureData.json"):
     for i in range(len(ways)):
         ways[i] = way(ways[i]["id"], ways[i]["nodes"])
 else:
-    file = open("map.txt", "r")
-    lines = file.readlines()
-    file.close()
+    ##get files in data directory with osm
+    files = []
 
-    nodes = {}
-    ways = []
+    for file in os.listdir("data"):
+        if file.endswith(".osm"):
+            files.append(file)
+    if len(files) == 0:
+        print("No osm files found")
+        sys.exit()
 
-    for i in range(len(lines)):
-        line = lines[i]
-        line = line.strip()
-        if line.startswith("<node"):
-            nodeIndex = line.find("<node")
-            nodeEndIndex = line.find("/>")
-            nodeString = line[nodeIndex:nodeEndIndex]
+    for file in files:
+        file = open("data/" + file, "r")
+        lines = file.readlines()
+        file.close()
 
-            id= ""
-            lat =""
-            long =""
-            nodeSplitString = nodeString.split(" ")
-            for value in nodeSplitString:
-                if value.startswith("id"):
-                    id = value.split("=")[1].replace('"', "")
-                elif value.startswith("lat"):
-                    lat = value.split("=")[1].replace('"', "")
-                elif value.startswith("lon"):
-                    long = value.split("=")[1].replace('"', "")
-            nodes[id] = (node(id, lat, long, None))
-            
-
-        elif line.startswith("<way"):
-            wayIndex = line.find("<way")
-            wayEndIndex = line.find(">")
-            wayString = line[wayIndex:wayEndIndex].split(" ")
-            id = ""
-            for value in wayString:
-                if value.startswith("id"):
-                    id = value.split("=")[1].replace('"', "")
-            wayNodes = []
-
-            while True:
+        ways = []
 
 
-                currentLine = lines[i].strip()
-                if currentLine.startswith("</way"):
-                    break
-                i+=1
-                if currentLine.startswith("<nd"):
-                    ndIndex = currentLine.find("<nd")
-                    ndEndIndex = currentLine.find("/>")
-                    ndString = currentLine[ndIndex:ndEndIndex]
-                    ndSplitString = ndString.split(" ")
-                    ndId = ""
-                    for value in ndSplitString:
-                        if value.startswith("ref"):
-                            ndId = value.split("=")[1].replace('"', "")
-                            break
-                    wayNodes.append(ndId)
-            ways.append(way(id, wayNodes))
-            
-    for way in ways:
-        for i in range(len(way.nodes)):
-            if nodes[way.nodes[i]].connectedNodes == None:
-                nodes[way.nodes[i]].connectedNodes = []
+        for i in range(len(lines)):
+            line = lines[i]
+            line = line.strip()
+            if line.startswith("<node"):
+                nodeIndex = line.find("<node")
+                nodeEndIndex = line.find("/>")
+                nodeString = line[nodeIndex:nodeEndIndex]
 
-            if i != 0:
-                nodes[way.nodes[i]].connectedNodes.append((way.nodes[i-1], getDistanceMeters(float(nodes[way.nodes[i]].lat), float(nodes[way.nodes[i]].lon), float(nodes[way.nodes[i-1]].lat), float(nodes[way.nodes[i-1]].lon))))
-            if i != len(way.nodes)-1:
-                nodes[way.nodes[i]].connectedNodes.append((way.nodes[i+1], getDistanceMeters(float(nodes[way.nodes[i]].lat), float(nodes[way.nodes[i]].lon), float(nodes[way.nodes[i+1]].lat), float(nodes[way.nodes[i+1]].lon))))
+                id= ""
+                lat =""
+                long =""
+                nodeSplitString = nodeString.split(" ")
+                for value in nodeSplitString:
+                    if value.startswith("id"):
+                        id = value.split("=")[1].replace('"', "")
+                    elif value.startswith("lat"):
+                        lat = value.split("=")[1].replace('"', "")
+                    elif value.startswith("lon"):
+                        long = value.split("=")[1].replace('"', "")
+                if not nodes.get(id):
+                    nodes[id] = (node(id, lat, long, []))
+                
+
+            elif line.startswith("<way"):
+                wayIndex = line.find("<way")
+                wayEndIndex = line.find(">")
+                wayString = line[wayIndex:wayEndIndex].split(" ")
+                id = ""
+                for value in wayString:
+                    if value.startswith("id"):
+                        id = value.split("=")[1].replace('"', "")
+                wayNodes = []
+
+                while True:
+                    currentLine = lines[i].strip()
+                    if currentLine.startswith("</way"):
+                        break
+                    i+=1
+                    if currentLine.startswith("<nd"):
+                        ndIndex = currentLine.find("<nd")
+                        ndEndIndex = currentLine.find("/>")
+                        ndString = currentLine[ndIndex:ndEndIndex]
+                        ndSplitString = ndString.split(" ")
+                        ndId = ""
+                        for value in ndSplitString:
+                            if value.startswith("ref"):
+                                ndId = value.split("=")[1].replace('"', "")
+                                break
+                        wayNodes.append(ndId)
+                ways.append(way(id, wayNodes))
+                
+        for wayCur in ways:
+            for i in range(len(wayCur.nodes)):
+                alreadyInList = False
+                for connectedNode in nodes[wayCur.nodes[i]].connectedNodes:
+                    if connectedNode[0] == wayCur.nodes[i-1]:
+                        alreadyInList = True
+                        break
+                if i != 0 and not alreadyInList:
+                    nodes[wayCur.nodes[i]].connectedNodes.append((wayCur.nodes[i-1], getDistanceMeters(float(nodes[wayCur.nodes[i]].lat), float(nodes[wayCur.nodes[i]].lon), float(nodes[wayCur.nodes[i-1]].lat), float(nodes[wayCur.nodes[i-1]].lon))))
+                if i != len(wayCur.nodes)-1 and not alreadyInList:
+                    nodes[wayCur.nodes[i]].connectedNodes.append((wayCur.nodes[i+1], getDistanceMeters(float(nodes[wayCur.nodes[i]].lat), float(nodes[wayCur.nodes[i]].lon), float(nodes[wayCur.nodes[i+1]].lat), float(nodes[wayCur.nodes[i+1]].lon))))
 
     data = {"nodes": {}, "ways": []}
     for key in nodes:
         data["nodes"][key] = nodes[key].toJson()
-    for way in ways:
-        data["ways"].append(way.toJson())
     file = open("pureData.json", "w")
     file.write(json.dumps(data))
     file.close()
@@ -353,9 +365,9 @@ def getShortestPathDikstras(startLat, startLon, endLat, endLon):
     makeGif(actionList, path, "dikjstra.gif")
     return path
 #path = getShortestPathBreadthFirst(40.914413, -73.12637, 40.914413, -73.119571)
-#path = getShortestPathDikstras(40.914413, -73.12637, 40.914413, -73.119571)
+path = getShortestPathDikstras(40.914413, -73.12637, 40.914413, -73.119571)
 
-path = getShortestPathAStar(40.914413, -73.12637, 40.914413, -73.119571)
+#path = getShortestPathAStar(40.914413, -73.12637, 40.914413, -73.119571)
 
 print("Complete")
 
